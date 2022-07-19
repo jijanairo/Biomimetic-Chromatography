@@ -1,0 +1,95 @@
+set.seed(1234)
+
+library(Peptides)
+library(dplyr)
+library(caret)
+library(ggpubr)
+library(pROC)
+
+set.seed(101831)
+df <- read.csv("resin.csv", header = TRUE) 
+out <- crucianiProperties(seq = df$Sequence)
+
+output <-as.data.frame(do.call(rbind, out))
+mother_dataset <- cbind(df, output)
+
+mother_dataset$Class <- as.factor(mother_dataset$Class)
+
+str(mother_dataset)
+
+dataset <- mother_dataset[6:9]
+
+
+validation_index <- createDataPartition(dataset$Class, p=0.7, list=FALSE)
+validation <- dataset[-validation_index,]
+dataset <- dataset[validation_index,]
+validation$Class <- as.factor(validation$Class)
+
+control <- trainControl(method="cv", number=10, classProbs = F)
+metric <- "Accuracy"
+
+fit.glm <- train(Class~., data=dataset, method="glm", metric=metric, trControl=control,)
+fit.glm
+
+fit.cart <- train(Class~., data=dataset, method="rpart", metric=metric, trControl=control)
+fit.cart
+
+fit.knn <- train(Class~., data=dataset, method="knn", metric=metric, trControl=control)
+fit.knn
+
+fit.svmL <- train(Class~., data=dataset, method="svmLinear", metric=metric, trControl=control)
+fit.svmL
+
+fit.svmR <- train(Class~ ., data=dataset, method="svmRadial", metric=metric, trControl=control)
+fit.svmR
+
+
+fit.svmP <- train(Class~., data=dataset, method="svmPoly", metric=metric, trControl=control)
+fit.svmP
+
+fit.ann <- train(Class ~ ., data = dataset, method = "nnet", metric=metric, trControl=control) 
+fit.ann
+
+# predicting using best model
+validation$Class <- as.factor(validation$Class)
+predictions <- predict(fit.glm, validation)
+show <- confusionMatrix(predictions, validation$Class, mode = "everything")
+show
+
+#AUC calculation
+predictions <- as.numeric(predictions)
+auc_data <-auc(validation$Class, predictions)
+auc_data
+
+#External validation
+df1 <- read.csv("external validation.csv", header = TRUE) 
+out1 <- crucianiProperties(seq = df1$Sequence)
+
+output1 <-as.data.frame(do.call(rbind, out1))
+mother_dataset1 <- cbind(df1, output1)
+
+mother_dataset1$Class <- as.factor(mother_dataset1$Class)
+
+mother_dataset1
+
+str(mother_dataset1)
+
+external_validation <- mother_dataset1[2:5]
+
+
+predictions_valid <- predict(fit.glm, external_validation)
+
+#Probability Threshold
+library(ggplot2)
+library(ggthemes)
+
+#Reorganized data. Much easier to plot
+data <- read.csv("tuning_melt.csv")
+data$Metric <- as.factor(data$Metric)
+
+ggplot(data = data, aes(x = prob_threshold, y = Values, color = Metric, pch = Metric)) + 
+    geom_point(size = 3.5) + xlab("Probability Threshold") + 
+    geom_vline(xintercept = 0.5, linetype = "dashed", color = "darkred", lwd = 1) + 
+    theme(axis.line.x.bottom=element_line(size = 2)) +  theme(axis.line.y.left=element_line(size = 2)) + 
+    scale_color_brewer(palette="Dark2") + theme_clean() + 
+    theme(legend.position = c(0.17, 0.16)) + geom_line(lwd = 0.4)
